@@ -1,1 +1,1 @@
-# University
+Projects created in this repository are the final tasks of the university in the field of computer science and econometrics. The files were written mainly in Polish due to the requirement to use the Polish language.
