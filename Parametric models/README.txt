@@ -1,0 +1,1 @@
+Project based on data from https://www.kaggle.com/uciml/student-alcohol-consumption?fbclid=IwAR2nJPvRH3700oQQZvXJforUHsNvZPFIXEOXTAmwZaR4hLTTgY-tCdfpP1Q&select=student-mat.csv

@@ -1,0 +1,178 @@
+---
+title: "Wplyw wybranych czynnikow na koncumpcje alkoholu"
+output: html_document
+---
+```{r}
+library("car")
+library("ggplot2")
+library("pscl")
+library("pROC")
+```
+
+###Wczytanie danych
+```{r}
+dane <-  read_xls("dane.xls")
+dane1 <-  read_xls("dane.xls")
+dane$Walc <- factor(dane$Walc)
+```
+
+Statystyki opisowe dla poszczególnych zmiennych: 
+```{r} 
+summary(dane)
+```
+
+###Estymacja modelu dwumianowego logitowego
+
+```{r}
+logit <- glm(Walc ~ ., data = dane, family = binomial)
+summary(logit)$coefficients
+```
+**Wnioski**
+
+Sugerujac sie powyższymi wartosciami, można stwierdzic, że wszystkie zmienne objasniajace statystycznie istotnie wplywaja na wielkosc konsumpcji alkoholu.
+
+Zmienne nie powinny byc ze soba nadmiernie skorelowane, nie powinny tez byc wspolliniowe.
+
+####Sprawdzenie braku współliniowości zmiennych objaśniających
+VIF (*Variance Inflation Factor*) czynnik inflacji/rozdęcia wariancji
+```{r}
+vif(logit)
+```
+Zmienne nie są współliniowe. Przyjmuje się umowną granicę występowania współlinowości dla modeli logitowych, gdy VIF > 2,5 (nie ma zgodności co do wartości granicznej - w literaturze można spotkać także graniczne wartości dla GLM 4, 5 oraz 10).
+
+###Estymacja modeli dwumianowych logitowych jednoczynnikowych
+```{r}
+logit1 <- glm(Walc ~ studytime, data = dane, family = binomial)
+summary(logit1)$coefficients
+logit2 <- glm(Walc ~ famrel, data = dane, family = binomial)
+summary(logit2)$coefficients
+logit3 <- glm(Walc ~ goout, data = dane, family = binomial)
+summary(logit3)$coefficients
+logit4 <- glm(Walc ~ absences, data = dane, family = binomial)
+summary(logit4)$coefficients
+```
+####Sprawdzenie korelacji parami zmiennych objaśniających
+Macierz korelacji dla zmiennych ilościowych
+```{r}
+cor(dane[,c(1,3,4)]) 
+```
+Zmienne nie są statystycznie istotnie skorelowane miedzy soba.
+
+
+```{r}
+logit$coefficients
+exp(logit$coefficients)
+```
+Interpretacje ilorazu szans:
+
+studytime: ` exp(b1) = 0,6023867 => (exp(b)-1)*100% = -39,76 `
+Jesli tygodniowy czas poswiecony na nauke wzrosnie o 1 godzine, to szansa na wysokie spozycie alkoholu spadne o 39,76%
+
+famrel: ` exp(b1) = 0,7594679 => (exp(b)-1)*100% = -24,05 `
+Jesli relacje z rodzina poprawia sie o jeden punkt, to szansa na wysokie spozycie alkoholu spadnie o 24,05%
+
+goout: ` exp(b1) = 2,2201904 => (exp(b)-1)*100% = 122,02 `
+Jesli ilosc czasu poswieconego na wyjscia ze znajomymi wzrosnie o 1 punkt, to szansa na wysokie spozycie alkoholu wzrosnie o 122,02%
+
+absences: ` exp(b1) = 1,0347050 => (exp(b)-1)*100% = 3,47 `
+Jesli liczba nieobecnosci wzrosnie o 1, to szansa na wysokie spozycie alkoholu wzrosnie o 3,47%.
+
+
+###Estymacja modelu dwumianowego probitowego
+
+```{r}
+probit <- glm(Walc ~ ., data = dane, family = binomial(link=probit))
+summary(probit)$coefficients
+```
+
+####Porównanie dobroci dopasowania modeli logit1 i probit1
+```{r}
+ocena_modelu_dwum <- function(model) {
+  kryterium_AIC <- c(model$aic)
+  McFadden<-pR2(model)[4]
+  Cragg_Uhler<-pR2(model)[6]
+  ocena <- data.frame(kryterium_AIC, McFadden, Cragg_Uhler)
+  return(ocena)
+}
+wyniki_oceny_logit_probit <- rbind(model_logit=ocena_modelu_dwum(logit), model_probit=ocena_modelu_dwum(probit))
+wyniki_oceny_logit_probit
+```
+**Wnioski**
+
+Pod wzgledem dopasowania nieco lepszym modelem jest model logitowy, ponieważ ma niższa wartosc kryterium AIC oraz wyzsze wartosci miar pseudo-R2.
+
+
+####Porównanie jakości predykcji modelu logitowego i modelu probitowego
+
+#####Tablice trafności dla p*=0.5
+
+```{r}
+p<-0.5
+#Tablica trafności dla modelu logitowego
+tab_traf <- data.frame(obserwowane=dane$Walc, przewidywane=ifelse(logit$fitted.values>p, 1, 0))
+table(tab_traf)
+#Tablica trafności dla modelu probitowego
+tab_traf <- data.frame(obserwowane=dane$Walc, przewidywane=ifelse(probit$fitted.values>p, 1, 0))
+table(tab_traf)
+```
+
+#####Miary oparte na tablicy trafności dla p*=0.5
+
+```{r}
+miary_pred <- function(model, Y, p=0.7) {
+  tab <- table(obserwowane=Y, przewidywane=ifelse(model$fitted.values>p, 1, 0))
+  ACC <- (tab[1,1]+tab[2,2])/sum(tab)
+  ER <- (tab[1,2]+tab[2,1])/sum(tab)
+  SENS <- tab[2,2]/(tab[2,2]+tab[2,1])
+  SPEC <- tab[1,1]/(tab[1,1]+tab[1,2])
+  PPV <- tab[2,2]/(tab[2,2]+tab[1,2])
+  NPV <- tab[1,1]/(tab[1,1]+tab[2,1])
+  miary <- data.frame(ACC, ER, SENS, SPEC, PPV, NPV)
+  return(miary)
+}
+wyniki_miary_pred <- rbind(model_logit=miary_pred(model=logit, Y=dane$Walc, p=0.42), model_probit=miary_pred(model=probit, Y=dane$Walc, p=0.5))
+wyniki_miary_pred
+```
+
+**Krzywa ROC**
+
+Ponizej znajduja sie wykresy krzywej ROC wykonane za pomoca dwoch funkcji programu R.
+```{r}
+rocobj1 <- roc(dane$Walc, logit$fitted.values,)
+plot(rocobj1)
+
+rocobj2 <- roc(dane$Walc, probit$fitted.values)
+plot(rocobj2)
+
+ggroc(rocobj1, legacy.axes = TRUE)+
+  ggtitle("Krzywa ROC dla modelu logitowego") +
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1), color="red")+
+  geom_hline(aes(yintercept=1), lty=2, color="grey")+
+  geom_hline(aes(yintercept=0), lty=2, color="grey")+
+  geom_vline(aes(xintercept=1), lty=2, color="grey")+
+  geom_vline(aes(xintercept=0), lty=2, color="grey")+
+  theme_classic()
+
+ggroc(rocobj2, legacy.axes = TRUE)+
+  ggtitle("Krzywa ROC dla modelu probitowego") +
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1), color="red")+
+  geom_hline(aes(yintercept=1), lty=2, color="grey")+
+  geom_hline(aes(yintercept=0), lty=2, color="grey")+
+  geom_vline(aes(xintercept=1), lty=2, color="grey")+
+  geom_vline(aes(xintercept=0), lty=2, color="grey")+
+  theme_classic()
+```
+
+**Pole powierzchni pod krzywą ROC**
+```{r}
+pole_AUC_logit<-as.numeric(auc(dane$Walc, logit$fitted.values))
+pole_AUC_probit<-as.numeric(auc(dane$Walc, probit$fitted.values))
+pole_AUC <- rbind(pole_AUC_logit, pole_AUC_probit)
+pole_AUC
+```
+
+**Podsumowanie**
+
+logit czy probit?
+
+Model logitowy, poniewaz ma odrobine lepsze dopasowanie, ponadto modele maja prawie takie same AUC (niezalezne od p*), a dodatkowo model logitowy ma uzyteczna interpretacje.
